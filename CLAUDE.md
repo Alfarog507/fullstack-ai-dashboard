@@ -18,7 +18,7 @@ El objetivo es construir una aplicación full stack pequeña pero profesional qu
 - Infra: Docker + Docker Compose
 
 ## LLM
-- Modelo: `gemini-2.0-flash`
+- Modelo: `gemini-2.5-flash`
 - Max tokens: no aplica (Gemini no requiere límite explícito)
 
 ## Estructura esperada
