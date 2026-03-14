@@ -10,7 +10,8 @@ async function analyzeComments(req, res) {
   try {
     const analysis = await runAnalysis(result.data.comments);
     res.json(analysis);
-  } catch {
+  } catch (err) {
+    console.error('[aiController]', err);
     res.status(500).json({ error: 'Error al analizar los comentarios con IA' });
   }
 }
