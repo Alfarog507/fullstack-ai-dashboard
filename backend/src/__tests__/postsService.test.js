@@ -17,9 +17,9 @@ describe('fetchGroupedPosts', () => {
     const result = await fetchGroupedPosts();
 
     expect(result).toEqual([
-      { name: 'Alice', postCount: 3 },
-      { name: 'Bob', postCount: 2 },
-      { name: 'Charlie', postCount: 1 },
+      { name: 'Alice', postCount: 3, bodies: ['c1', 'c3', 'c6'] },
+      { name: 'Bob', postCount: 2, bodies: ['c2', 'c5'] },
+      { name: 'Charlie', postCount: 1, bodies: ['c4'] },
     ]);
   });
 
@@ -32,7 +32,7 @@ describe('fetchGroupedPosts', () => {
   it('handles a single comment correctly', async () => {
     fetchComments.mockResolvedValue([{ name: 'Solo', body: 'only one' }]);
     const result = await fetchGroupedPosts();
-    expect(result).toEqual([{ name: 'Solo', postCount: 1 }]);
+    expect(result).toEqual([{ name: 'Solo', postCount: 1, bodies: ['only one'] }]);
   });
 
   it('propagates error when external API fails', async () => {

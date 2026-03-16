@@ -1,4 +1,5 @@
 const genAI = require('../clients/geminiClient');
+const { aiResponseSchema } = require('../schemas/aiResponseSchema');
 
 const SYSTEM_PROMPT = `Eres un analizador de comentarios.
 Dado un listado de comentarios, devuelve ÚNICAMENTE un JSON con esta forma exacta (sin markdown, sin texto extra):
@@ -14,8 +15,12 @@ async function analyzeComments(comments) {
   });
 
   const result = await model.generateContent(userMessage);
-  const raw = result.response.text().trim().replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '');
-  return JSON.parse(raw);
+  const text = result.response.text();
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error('LLM response did not contain a JSON object');
+
+  const parsed = JSON.parse(match[0]);
+  return aiResponseSchema.parse(parsed);
 }
 
 module.exports = { analyzeComments };

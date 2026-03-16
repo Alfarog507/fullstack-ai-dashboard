@@ -41,8 +41,8 @@ export default function App() {
     setAnalysis(null);
     setAnalysisError(null);
     try {
-      const names = posts.map(p => p.name);
-      const result = await analyzeComments(names);
+      const comments = posts.flatMap(p => p.bodies).slice(0, 20);
+      const result = await analyzeComments(comments);
       setAnalysis(result);
     } catch {
       setAnalysisError('No se pudo completar el análisis.');
