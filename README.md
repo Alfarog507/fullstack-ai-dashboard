@@ -97,10 +97,12 @@ Consume `https://jsonplaceholder.typicode.com/comments`, agrupa los comentarios 
 **Respuesta `200`:**
 ```json
 [
-  { "name": "Leanne Graham", "postCount": 5 },
-  { "name": "Ervin Howell", "postCount": 3 }
+  { "name": "Leanne Graham", "postCount": 5, "bodies": ["comentario 1", "comentario 2"] },
+  { "name": "Ervin Howell", "postCount": 3, "bodies": ["comentario 3"] }
 ]
 ```
+
+El campo `bodies` contiene los textos de los comentarios del usuario. El frontend lo usa para alimentar el endpoint de análisis IA.
 
 **Errores:** `500` si falla la API externa.
 
@@ -138,7 +140,7 @@ cd backend
 npm test
 ```
 
-17 tests distribuidos en 4 suites:
+18 tests distribuidos en 4 suites:
 
 | Suite | Cobertura |
 |---|---|
