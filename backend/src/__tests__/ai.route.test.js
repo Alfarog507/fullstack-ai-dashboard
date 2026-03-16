@@ -34,6 +34,15 @@ describe('POST /ai/analyze-comments', () => {
     expect(res.body).toHaveProperty('error');
   });
 
+  it('returns 400 when comments array exceeds 20 items', async () => {
+    const res = await request(app)
+      .post('/ai/analyze-comments')
+      .send({ comments: Array.from({ length: 21 }, (_, i) => `comment ${i}`) });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toHaveProperty('error');
+  });
+
   it('returns 400 when comments contains non-strings', async () => {
     const res = await request(app)
       .post('/ai/analyze-comments')
