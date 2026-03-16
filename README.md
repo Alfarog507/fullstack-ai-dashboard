@@ -8,19 +8,43 @@ Aplicación full stack que consume datos de una API externa, los procesa mediant
 - Node.js + Express (puerto 3001)
 - Google Gemini `gemini-2.5-flash` vía `@google/generative-ai`
 - Validación de inputs con Zod
+- Tests con Jest + Supertest
 
 **Frontend**
 - React 18 + Vite (puerto 5173)
 - TailwindCSS
-- Programación funcional con Hooks
+- Componentes funcionales con Hooks
 
 **Infraestructura**
 - Docker + Docker Compose
 
+## Estructura del Proyecto
+
+```
+prueba-fullstack-ai/
+├── backend/
+│   ├── src/
+│   │   ├── clients/          # Clientes HTTP externos (JSONPlaceholder, Gemini)
+│   │   ├── controllers/      # Manejo de requests/responses HTTP
+│   │   ├── routes/           # Definición de rutas Express
+│   │   ├── schemas/          # Esquemas de validación Zod
+│   │   ├── services/         # Lógica de negocio
+│   │   └── __tests__/        # Tests unitarios e integración
+│   └── package.json
+├── frontend/
+│   ├── src/
+│   │   ├── components/       # Componentes React reutilizables
+│   │   └── App.jsx           # Componente raíz y estado global
+│   ├── nginx.conf            # Proxy reverso para producción
+│   └── Dockerfile
+├── docker-compose.yml
+└── .env.example
+```
+
 ## Requisitos Previos
 
 - [Docker](https://www.docker.com/) y Docker Compose instalados
-- API Key de Google Gemini
+- API Key de Google Gemini ([obtener aquí](https://aistudio.google.com/app/apikey))
 
 ## Instalación y Ejecución
 
@@ -29,45 +53,48 @@ Aplicación full stack que consume datos de una API externa, los procesa mediant
 ```bash
 git clone <url-del-repositorio>
 cd prueba-fullstack-ai
-cp .env.example .env      # API key
+cp .env.example .env      # completar LLM_API_KEY
 docker compose up --build
 ```
 
 La app queda disponible en `http://localhost:5173`.
 
-### Sin Docker
+### Sin Docker (desarrollo local)
 
 **Backend:**
 ```bash
 cd backend
-cp .env.example .env      # API key
+cp .env.example .env      # completar LLM_API_KEY
 npm install
 npm start
 ```
 
-**Frontend:**
+**Frontend** (en otra terminal):
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
+El frontend en desarrollo usa el proxy de Vite para redirigir `/posts` y `/ai` al backend en `localhost:3001`.
+
 ## Variables de Entorno
 
-Crear un archivo `.env` en la raíz (para Docker) o en `/backend` (sin Docker):
+Copiar `.env.example` a `.env` en la raíz del proyecto:
 
 ```env
-LLM_API_KEY=your_gemini_api_key_here
-PORT=3001                  # opcional, default 3001
+LLM_API_KEY=your_gemini_api_key_here   # requerido
+PORT=3001                               # opcional, default 3001
+VITE_API_URL=                           # vacío en dev (usa proxy), completar en producción
 ```
 
 ## API Endpoints
 
 ### `GET /posts`
 
-Consume `https://jsonplaceholder.typicode.com/comments`, agrupa por `name` y devuelve el resultado ordenado de mayor a menor.
+Consume `https://jsonplaceholder.typicode.com/comments`, agrupa los comentarios por `name` y devuelve el resultado ordenado de mayor a menor cantidad.
 
-**Respuesta:**
+**Respuesta `200`:**
 ```json
 [
   { "name": "Leanne Graham", "postCount": 5 },
@@ -81,14 +108,18 @@ Consume `https://jsonplaceholder.typicode.com/comments`, agrupa por `name` y dev
 
 ### `POST /ai/analyze-comments`
 
-Recibe una lista de textos, los analiza con Gemini y devuelve un resumen y sentimiento general.
+Recibe una lista de textos, los analiza con Gemini y devuelve un resumen y el sentimiento general.
 
 **Body:**
 ```json
 { "comments": ["comentario 1", "comentario 2"] }
 ```
 
-**Respuesta:**
+**Validaciones:**
+- `comments` es requerido y debe ser un array de strings
+- Mínimo 1 elemento, máximo 20
+
+**Respuesta `200`:**
 ```json
 {
   "summary": "Los usuarios comentan principalmente sobre el sistema.",
@@ -107,37 +138,33 @@ cd backend
 npm test
 ```
 
-17 tests distribuidos en 4 suites: servicios (`postsService`, `aiService`) y rutas (`GET /posts`, `POST /ai/analyze-comments`).
+17 tests distribuidos en 4 suites:
 
-## Funcionalidades Opcionales
+| Suite | Cobertura |
+|---|---|
+| `postsService.test.js` | Agrupación, ordenamiento y manejo de errores del servicio |
+| `aiService.test.js` | Parsing del LLM, extracción de JSON, validación de respuesta |
+| `posts.route.test.js` | Integración del endpoint `GET /posts` |
+| `ai.route.test.js` | Integración del endpoint `POST /ai/analyze-comments` |
 
-- [ ] Clasificación automática de comentarios
-- [ ] Búsqueda semántica con embeddings
-- [ ] Streaming de respuestas del LLM
-- [ ] Despliegue en servicio cloud
+## Decisiones Técnicas
+
+**Arquitectura en capas:** Se separó el backend en cinco capas — rutas, controladores, servicios, clientes y esquemas — para que cada archivo tenga una única responsabilidad. Los controladores solo manejan HTTP; la lógica de negocio vive exclusivamente en los servicios.
+
+**Validación en dos niveles:** Los inputs del usuario se validan con Zod en el controlador antes de llegar al servicio. La respuesta del LLM también se valida con un schema Zod para garantizar que siempre tenga la forma esperada, independientemente de lo que devuelva Gemini.
+
+**Proxy en producción:** En Docker, el frontend compilado corre sobre Nginx, que actúa como proxy reverso hacia el backend usando el nombre de servicio del compose (`http://backend:3001`). Esto evita exponer el backend directamente al cliente y elimina problemas de CORS.
+
+**Healthcheck en Docker:** El compose espera que el backend esté saludable (`service_healthy`) antes de arrancar el frontend, evitando que Nginx empiece a proxear requests antes de que Express esté listo.
 
 ## Uso de IA para Desarrollo
 
-### Herramientas utilizadas
+Este proyecto fue desarrollado con asistencia de **Claude Code** (CLI de Anthropic).
 
-- Claude Code (CLI de Anthropic)
+### Tareas asistidas por IA
 
-### Tareas en las que ayudaron
-
-- Generación del esqueleto completo del proyecto (backend, frontend, Docker)
+- Generación del esqueleto inicial del proyecto (backend, frontend, Docker)
 - Escritura de tests con Jest y Supertest
-- Configuración de Vite proxy y Nginx para producción
-- Debugging y ajustes de integración entre capas
-
-### Ejemplos de prompts utilizados
-
-```
-"Before writing any code, read every file in the project (backend and frontend),
-then create a detailed plan that includes what's already implemented, what needs
-to be created from scratch, what needs to be modified, and the exact order to
-implement everything, session by session."
-```
-
-```
-"go ahead with session 1"
-```
+- Configuración del proxy de Vite y Nginx para producción
+- Diagnóstico y corrección de bugs de integración entre capas
+- Revisión de calidad de código y mejoras incrementales
