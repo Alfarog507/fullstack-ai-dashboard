@@ -1,248 +1,153 @@
-# Prueba Técnica — Full Stack Developer (AI-Enabled)
+# Fullstack AI Dashboard — Fullstack App with LLM Streaming
 
-Aplicación full stack que consume datos de una API externa, los procesa mediante un backend propio, integra un modelo de lenguaje (LLM) para análisis de texto y presenta la información en un cliente web moderno.
+A fullstack web application that fetches user comment data, groups and ranks it, then analyzes it using Google Gemini with real-time streaming responses via Server-Sent Events (SSE).
 
-## Tech Stack
+Built as a demonstration of a production-ready fullstack architecture: layered Node.js backend, React frontend, Docker deployment, Zod validation at every boundary, and 20 tests across 4 suites.
 
-**Backend**
-- Node.js + Express (puerto 3001)
-- Google Gemini `gemini-2.5-flash` vía `@google/generative-ai`
-- Validación de inputs y outputs con Zod
-- Tests con Jest + Supertest
+---
 
-**Frontend**
-- React 18 + Vite (puerto 5173)
-- TailwindCSS
-- Componentes funcionales con Hooks
+## What it does
 
-**Infraestructura**
-- Docker + Docker Compose
+1. Fetches comments from an external API and groups them by user, ranked by volume
+2. Displays results in a paginated, searchable table
+3. Lets you select a user and analyze their comments with Gemini AI
+4. Streams the AI response token-by-token to the UI in real time (SSE)
+5. Returns structured output: summary, sentiment (positive/neutral/negative), and topic categories
 
-## Estructura del Proyecto
+---
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Backend | Node.js + Express |
+| AI | Google Gemini `gemini-2.5-flash` via `@google/generative-ai` |
+| Validation | Zod (inputs + LLM outputs) |
+| Testing | Jest + Supertest (20 tests, 4 suites) |
+| Frontend | React 18 + Vite + TailwindCSS |
+| Streaming | Server-Sent Events (SSE) |
+| Deployment | Docker + Docker Compose (multi-stage build) |
+
+---
+
+## Key technical decisions
+
+**Layered architecture (routes → controllers → services → clients → schemas)**
+Each layer has a single responsibility. Controllers handle only HTTP. Business logic lives in services. External API calls are encapsulated in clients. This separation makes dependencies mockable in tests without touching production code.
+
+**Two-level Zod validation**
+User inputs are validated before reaching the service layer. LLM responses also pass through a Zod schema (`aiResponseSchema`) — if Gemini omits `categories`, Zod applies `.default([])` instead of throwing. This makes the AI integration resilient to model inconsistencies.
+
+**SSE over WebSockets for streaming**
+LLM streaming is unidirectional (server → client), so WebSockets would be over-engineered. SSE works over standard HTTP with no additional libraries. The backend uses an async generator that accumulates the full text while emitting chunks — JSON is only parsed once the stream completes, never on partial output.
+
+**Docker multi-stage build**
+The frontend Dockerfile compiles with Vite in a build stage and copies only the static output to a final Nginx image. The production image contains no Node.js or dev dependencies.
+
+**Nginx reverse proxy**
+The compiled frontend runs on Nginx, which proxies `/posts` and `/ai` to the backend using the Docker Compose service name (`http://backend:3001`). This mirrors what Vite's dev proxy does in development — same mental model across environments.
+
+**Healthcheck-aware startup**
+Docker Compose waits for the backend to pass its healthcheck before starting Nginx, preventing "connection refused" errors on the first requests.
+
+---
+
+## Project structure
 
 ```
-prueba-fullstack-ai/
 ├── backend/
-│   ├── src/
-│   │   ├── clients/          # Clientes HTTP externos (JSONPlaceholder, Gemini)
-│   │   ├── controllers/      # Manejo de requests/responses HTTP
-│   │   ├── routes/           # Definición de rutas Express
-│   │   ├── schemas/          # Esquemas de validación Zod
-│   │   ├── services/         # Lógica de negocio
-│   │   └── __tests__/        # Tests unitarios e integración
-│   └── package.json
+│   └── src/
+│       ├── clients/       # External HTTP clients (JSONPlaceholder, Gemini)
+│       ├── controllers/   # HTTP request/response handling
+│       ├── routes/        # Express route definitions
+│       ├── schemas/       # Zod validation schemas
+│       ├── services/      # Business logic
+│       └── __tests__/     # Unit + integration tests
 ├── frontend/
-│   ├── src/
-│   │   ├── api/              # Funciones de comunicación con el backend
-│   │   ├── components/       # Componentes React reutilizables
-│   │   └── App.jsx           # Componente raíz y estado global
-│   ├── nginx.conf            # Proxy reverso para producción
-│   └── Dockerfile
+│   └── src/
+│       ├── api/           # Backend communication functions
+│       ├── components/    # Reusable React components
+│       └── App.jsx        # Root component + global state
 ├── docker-compose.yml
 └── .env.example
 ```
 
-## Requisitos Previos
-
-- [Docker](https://www.docker.com/) y Docker Compose instalados
-- API Key de Google Gemini ([obtener aquí](https://aistudio.google.com/app/apikey))
-
-## Instalación y Ejecución
-
-### Con Docker (recomendado)
-
-```bash
-git clone <url-del-repositorio>
-cd prueba-fullstack-ai
-cp .env.example .env      # completar LLM_API_KEY con tu API key de Gemini
-docker compose up --build
-```
-
-La app queda disponible en `http://localhost:5173`.
-
-### Sin Docker (desarrollo local)
-
-**Backend:**
-```bash
-cd backend
-cp .env.example .env      # completar LLM_API_KEY
-npm install
-npm start
-```
-
-**Frontend** (en otra terminal):
-```bash
-cd frontend
-npm install
-npm run dev
-```
-
-El frontend en desarrollo usa el proxy de Vite para redirigir `/posts` y `/ai` al backend en `localhost:3001`, sin necesidad de configurar CORS.
-
-## Variables de Entorno
-
-Copiar `.env.example` a `.env` en la raíz del proyecto:
-
-```env
-LLM_API_KEY=your_gemini_api_key_here   # requerido
-PORT=3001                               # opcional, default 3001
-VITE_API_URL=                           # vacío en dev (usa proxy de Vite)
-```
-
-## API Endpoints
-
-### `GET /posts`
-
-Consume `https://jsonplaceholder.typicode.com/comments`, agrupa los comentarios por `name`, cuenta cuántos tiene cada usuario y devuelve el resultado ordenado de mayor a menor.
-
-**Respuesta `200`:**
-```json
-[
-  {
-    "name": "Leanne Graham",
-    "postCount": 5,
-    "bodies": ["comentario 1", "comentario 2", "..."]
-  }
-]
-```
-
-El campo `bodies` contiene los textos reales de los comentarios. El frontend lo usa para alimentar el endpoint de análisis IA.
-
-**Errores:** `500` si falla la API externa.
-
 ---
 
-### `POST /ai/analyze-comments`
+## API reference
 
-Recibe una lista de textos, los analiza con Gemini y devuelve un resumen, el sentimiento general y categorías temáticas.
+### `GET /posts`
+Fetches comments from JSONPlaceholder, groups by `name`, counts per user, returns sorted descending.
 
-**Body:**
 ```json
-{ "comments": ["comentario 1", "comentario 2"] }
+[{ "name": "Leanne Graham", "postCount": 5, "bodies": ["..."] }]
 ```
 
-**Validaciones:** array de strings, mínimo 1 elemento, máximo 20.
+### `POST /ai/analyze-comments`
+Analyzes a list of comment texts with Gemini. Returns structured output.
 
-**Respuesta `200`:**
+**Body:** `{ "comments": ["text1", "text2"] }` (1–20 items)
+
 ```json
 {
-  "summary": "Los usuarios comentan principalmente sobre el sistema y la experiencia de uso.",
+  "summary": "Users mostly discuss system experience and support.",
   "sentiment": "neutral",
-  "categories": ["soporte", "experiencia de usuario"]
+  "categories": ["support", "user experience"]
 }
 ```
 
-- `sentiment`: `positive` | `neutral` | `negative`
-- `categories`: entre 1 y 4 etiquetas temáticas generadas por el LLM
+### `POST /ai/analyze-comments/stream`
+Same input as above, but streams the response as SSE:
 
-**Errores:** `400` si el body es inválido, `500` si falla el LLM.
+```
+data: {"type":"chunk","text":"Users mostly"}
+data: {"type":"done","result":{"summary":"...","sentiment":"positive","categories":["support"]}}
+```
 
 ---
-
-### `POST /ai/analyze-comments/stream`
-
-Mismo contrato de entrada que el endpoint anterior, pero la respuesta se entrega como **Server-Sent Events (SSE)**. Permite mostrar la respuesta del LLM en tiempo real mientras se genera.
-
-**Eventos emitidos:**
-
-```
-data: {"type":"chunk","text":"Los usuarios"}
-data: {"type":"chunk","text":" comentan..."}
-data: {"type":"done","result":{"summary":"...","sentiment":"positive","categories":["soporte"]}}
-```
-
-En caso de error durante el stream:
-```
-data: {"type":"error","message":"Error al analizar los comentarios"}
-```
-
-El frontend usa este endpoint para el botón "Analizar comentarios con IA", mostrando el texto mientras se genera y el resultado formateado al completarse.
 
 ## Tests
 
 ```bash
-cd backend
-npm test
+cd backend && npm test
 ```
 
-20 tests distribuidos en 4 suites:
-
-| Suite | Cobertura |
+| Suite | What's covered |
 |---|---|
-| `postsService.test.js` | Agrupación por nombre, ordenamiento descendente, acumulación de bodies, propagación de errores |
-| `aiService.test.js` | Parsing del LLM, extracción de JSON, defaults de Zod, streaming con async generator |
-| `posts.route.test.js` | Integración del endpoint `GET /posts`: respuestas 200 y 500 |
-| `ai.route.test.js` | Integración del endpoint `POST /ai/analyze-comments`: respuestas 200, 400 y 500 |
+| `postsService.test.js` | Grouping, sorting, body accumulation, error propagation |
+| `aiService.test.js` | LLM parsing, JSON extraction, Zod defaults, streaming async generator |
+| `posts.route.test.js` | `GET /posts` — 200 and 500 responses |
+| `ai.route.test.js` | `POST /ai/analyze-comments` — 200, 400, and 500 responses |
 
-## Decisiones Técnicas
+---
 
-**Arquitectura en capas:** El backend se separó en cinco capas — rutas, controladores, servicios, clientes y esquemas — para que cada archivo tenga una única responsabilidad. Los controladores solo manejan HTTP; la lógica de negocio vive en los servicios; los clientes encapsulan las llamadas externas. Esta separación es lo que permite mockear dependencias en los tests sin tocar código de producción.
+## Local setup
 
-**Validación en dos niveles:** Los inputs del usuario se validan con Zod en el controlador antes de llegar al servicio. La respuesta del LLM también pasa por un schema Zod (`aiResponseSchema`) para garantizar que siempre tenga la forma esperada, independientemente de lo que devuelva Gemini. Si el modelo omite `categories`, Zod aplica `.default([])` en vez de tirar error.
+### With Docker (recommended)
 
-**SSE sobre WebSockets para streaming:** El streaming de respuestas del LLM es unidireccional (servidor → cliente), por lo que WebSockets serían sobredimensionados. SSE funciona sobre HTTP estándar sin librerías adicionales. En el backend se usa un async generator que acumula el texto completo mientras emite chunks, y al terminar parsea el JSON completo — nunca se intenta parsear JSON parcial.
-
-**Multi-stage build en Docker:** El Dockerfile del frontend compila el proyecto con Vite en una primera imagen y copia solo los archivos estáticos a una imagen Nginx final. La imagen de producción no contiene Node.js ni dependencias de desarrollo, lo que la hace considerablemente más liviana.
-
-**Proxy Nginx en producción:** El frontend compilado corre sobre Nginx, que actúa como proxy reverso hacia el backend usando el nombre de servicio del compose (`http://backend:3001`). Esto evita exponer el puerto del backend directamente y elimina problemas de CORS. El patrón replica en producción lo que el proxy de Vite hace en desarrollo.
-
-**Healthcheck en Docker:** El compose espera que el backend responda correctamente (`service_healthy`) antes de arrancar Nginx, evitando que los primeros requests fallen con "connection refused" mientras Express todavía está arrancando.
-
-## Funcionalidades Implementadas
-
-- [x] Agrupación de comentarios por usuario con conteo ordenado
-- [x] Tabla con paginación y búsqueda por nombre
-- [x] Análisis de comentarios con IA (resumen + sentimiento)
-- [x] Clasificación automática de comentarios en categorías temáticas
-- [x] Streaming de respuestas del LLM en tiempo real (SSE)
-- [x] Estados de loading, error y empty en el frontend
-- [x] Tests unitarios e integración en el backend
-- [x] Dockerización completa con `docker compose up --build`
-
-## Uso de IA para Desarrollo
-
-Este proyecto fue desarrollado con asistencia de **Claude Code** (CLI de Anthropic).
-
-### Tareas asistidas
-
-- Planificación de la arquitectura y orden de implementación sesión por sesión
-- Generación del esqueleto completo del backend (estructura en capas, endpoints, validaciones)
-- Escritura de todos los tests con Jest y Supertest
-- Configuración del proxy de Vite y Nginx para desarrollo y producción
-- Implementación del streaming SSE end-to-end (async generator, SSE headers, ReadableStream en cliente)
-- Integración de la clasificación automática en el schema y prompt existentes
-- Diagnóstico y ajustes entre sesiones a medida que evolucionó el código
-
-### Prompts utilizados
-
-**Para arrancar el proyecto con contexto claro:**
-```
-Before writing any code, read every file in the project (backend and frontend),
-then create a detailed plan that includes:
-1. What's already implemented and can be kept as-is
-2. What needs to be created from scratch
-3. What needs to be modified to match CLAUDE.md conventions
-4. The exact order you'll implement everything, session by session
-
-Do not write any code yet. Only give me the plan and wait for my approval.
+```bash
+git clone https://github.com/Alfarog507/prueba-fullstack-ai
+cd prueba-fullstack-ai
+cp .env.example .env   # add your Gemini API key
+docker compose up --build
 ```
 
-**Para ejecutar cada sesión de forma controlada:**
-```
-go ahead with session 1
+App available at `http://localhost:5173`.
+
+### Without Docker
+
+```bash
+# Terminal 1 — backend
+cd backend && cp .env.example .env && npm install && npm start
+
+# Terminal 2 — frontend
+cd frontend && npm install && npm run dev
 ```
 
-**Para implementar las features opcionales:**
-```
-Streaming de llm y luego continua con clasificacion de comentarios
-```
+**Environment variables**
 
-**Para obtener una evaluación honesta antes de implementar:**
-```
-¿Cómo ves el implementar algo de estos puntos?
-OPCIONALES (NO OBLIGATORIOS)
-- Clasificación automática de comentarios
-- Búsqueda semántica con embeddings
-- Streaming de respuestas del LLM
-- Despliegue en algún servicio cloud
-```
+| Variable | Description | Default |
+|---|---|---|
+| `LLM_API_KEY` | Google Gemini API key (required) | — |
+| `PORT` | Backend port | `3001` |
+| `VITE_API_URL` | Leave empty in dev (uses Vite proxy) | `""` |
